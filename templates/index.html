@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Network Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #111419;
+    --border: #1e2530;
+    --accent: #00ff88;
+    --accent2: #00b8ff;
+    --warn: #ff6b35;
+    --critical: #ff2d55;
+    --text: #c8d8e8;
+    --muted: #4a5568;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,255,136,0.015) 2px,
+      rgba(0,255,136,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .shell {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* Header */
+  .header {
+    margin-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+  }
+
+  .logo {
+    font-family: var(--sans);
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,255,136,0.4);
+  }
+
+  .logo span { color: var(--text); }
+
+  .tagline {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Input form */
+  .scan-form {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .prompt-wrap {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 260px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 16px;
+    transition: border-color 0.2s;
+  }
+
+  .prompt-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(0,255,136,0.2);
+  }
+
+  .prompt-prefix {
+    color: var(--accent);
+    font-size: 14px;
+    margin-right: 10px;
+    user-select: none;
+  }
+
+  .prompt-wrap input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    width: 100%;
+    padding: 14px 0;
+    caret-color: var(--accent);
+  }
+
+  .prompt-wrap input::placeholder { color: var(--muted); }
+
+  .btn-scan {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 0 28px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-scan:hover {
+    background: #00e87a;
+    box-shadow: 0 0 16px rgba(0,255,136,0.4);
+  }
+
+  .disclaimer {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  /* Error */
+  .error-box {
+    background: rgba(255,45,85,0.08);
+    border: 1px solid var(--critical);
+    border-radius: 4px;
+    padding: 16px 20px;
+    margin-top: 32px;
+    font-size: 13px;
+    color: var(--critical);
+  }
+
+  /* Summary bar */
+  .summary-bar {
+    display: flex;
+    gap: 0;
+    margin-top: 36px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .stat {
+    flex: 1;
+    padding: 18px 20px;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .stat:last-child { border-right: none; }
+
+  .stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: var(--sans);
+  }
+
+  .stat-value.warn { color: var(--warn); }
+  .stat-value.neutral { color: var(--text); }
+
+  /* Sections */
+  .section {
+    margin-top: 36px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent2);
+  }
+
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead tr {
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(30,37,48,0.6);
+    vertical-align: top;
+  }
+
+  tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .port-num {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .svc-tag {
+    display: inline-block;
+    background: rgba(0,184,255,0.1);
+    color: var(--accent2);
+    border: 1px solid rgba(0,184,255,0.2);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+
+  .banner-text {
+    color: #7a8a9a;
+    font-size: 11px;
+    word-break: break-all;
+    max-width: 340px;
+  }
+
+  .no-data { color: var(--muted); font-size: 12px; font-style: italic; }
+
+  /* CVE items */
+  .cve-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+
+  .cve-item {
+    background: rgba(255,107,53,0.06);
+    border-left: 2px solid var(--warn);
+    border-radius: 2px;
+    padding: 8px 10px;
+  }
+
+  .cve-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+
+  .cve-id {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--warn);
+  }
+
+  .score-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.5px;
+  }
+
+  .score-critical { background: var(--critical); color: #fff; }
+  .score-high { background: #ff6b35; color: #fff; }
+  .score-medium { background: #f59e0b; color: #000; }
+  .score-low { background: #22c55e; color: #000; }
+
+  .cve-desc { font-size: 11px; color: #5a6a7a; line-height: 1.5; }
+
+  /* OS list */
+  .os-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .os-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* Vuln list */
+  .vuln-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .vuln-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,45,85,0.05);
+    border: 1px solid rgba(255,45,85,0.15);
+    border-radius: 3px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .vuln-item::before {
+    content: '!';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background: var(--critical);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* Empty state */
+  .empty { color: var(--muted); font-size: 13px; padding: 16px 0; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="header">
+    <div class="logo">NET<span>SCAN</span></div>
+    <div class="tagline">Port · Service · Vulnerability · CVE Intelligence</div>
+  </div>
+
+  <form class="scan-form" method="POST">
+    <div class="prompt-wrap">
+      <span class="prompt-prefix">$&gt;</span>
+      <input type="text" name="target"
+             placeholder="scanme.nmap.org or 93.184.216.34"
+             value="{{ request.form.get('target', '') }}"
+             autocomplete="off"
+             required />
+    </div>
+    <button class="btn-scan" type="submit">Run Scan</button>
+  </form>
+  <p class="disclaimer">⚠ Only scan hosts you own or have explicit written permission to scan.</p>
+
+  {% if result %}
+
+    {% if result.error %}
+      <div class="error-box">✗ {{ result.error }}</div>
+
+    {% else %}
+
+      <!-- Summary -->
+      <div class="summary-bar">
+        <div class="stat">
+          <div class="stat-label">Target IP</div>
+          <div class="stat-value neutral" style="font-size:15px; padding-top:4px;">{{ result.ip }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Ports Scanned</div>
+          <div class="stat-value neutral">{{ result.total_ports }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Open Ports</div>
+          <div class="stat-value">{{ result.open_ports | length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Vuln Hints</div>
+          <div class="stat-value {% if result.vulns %}warn{% else %}neutral{% endif %}">
+            {{ result.vulns | length }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Open Ports + Banners -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Open Ports &amp; Banners</span>
+          <div class="section-line"></div>
+        </div>
+        {% if result.open_ports %}
+        <table>
+          <thead>
+            <tr><th>Port</th><th>Service</th><th>Banner</th></tr>
+          </thead>
+          <tbody>
+            {% for p in result.open_ports %}
+            <tr>
+              <td><span class="port-num">{{ p.port }}</span></td>
+              <td><span class="svc-tag">{{ p.service }}</span></td>
+              <td>
+                {% if p.banner %}
+                  <span class="banner-text">{{ p.banner }}</span>
+                {% else %}
+                  <span class="no-data">no banner</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <p class="empty">No open ports detected.</p>
+        {% endif %}
+      </div>
+
+      <!-- OS Detection -->
+      {% if result.os %}
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">OS Detection</span>
+          <div class="section-line"></div>
+        </div>
+        <div class="os-chips">
+          {% for os in result.os %}
+            <span class="os-chip">{{ os }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Services + CVE Lookup -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Services &amp; CVE Lookup</span>
+          <div class="section-line"></div>
+        </div>
+        {% if result.services %}
+        <table>
+          <thead>
+            <tr><th>Port</th><th>Service</th><th>Product / Version</th><th>CVEs</th></tr>
+          </thead>
+          <tbody>
+            {% for s in result.services %}
+            <tr>
+              <td><span class="port-num">{{ s.port }}</span></td>
+              <td><span class="svc-tag">{{ s.name }}</span></td>
+              <td style="color: var(--text); font-size:12px;">{{ s.product }} {{ s.version }}</td>
+              <td>
+                {% if s.cves %}
+                  <ul class="cve-list">
+                    {% for cve in s.cves %}
+                    <li class="cve-item">
+                      <div class="cve-header">
+                        <span class="cve-id">{{ cve.id }}</span>
+                        {% if cve.score %}
+                          {% if cve.score >= 9 %}
+                            <span class="score-badge score-critical">{{ cve.score }} CRITICAL</span>
+                          {% elif cve.score >= 7 %}
+                            <span class="score-badge score-high">{{ cve.score }} HIGH</span>
+                          {% elif cve.score >= 4 %}
+                            <span class="score-badge score-medium">{{ cve.score }} MEDIUM</span>
+                          {% else %}
+                            <span class="score-badge score-low">{{ cve.score }} LOW</span>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                      <div class="cve-desc">{{ cve.description }}</div>
+                    </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <span class="no-data">no CVEs found</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <p class="empty">No service details available — nmap may need root/admin privileges.</p>
+        {% endif %}
+      </div>
+
+      <!-- Vulnerability Hints -->
+      {% if result.vulns %}
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Vulnerability Hints</span>
+          <div class="section-line"></div>
+        </div>
+        <div class="vuln-list">
+          {% for v in result.vulns %}
+            <div class="vuln-item">{{ v }}</div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+    {% endif %}
+  {% endif %}
+
+</div>
+</body>
+</html>
